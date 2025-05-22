@@ -333,12 +333,4 @@ if input_df is not None and models_loaded and selected_model:
                         st.plotly_chart(fig, use_container_width=True)
 
                         csv = processed_df.to_csv(index=False)
-                        st.download_button(
-                            label="💾 Download Predictions as CSV",
-                            data=csv,
-                            file_name="sleep_predictions.csv",
-                            mime="text/csv",
-                        )
-
-                    else:
-                        st.error("⚠️ Prediction")
+                        st.download_button
