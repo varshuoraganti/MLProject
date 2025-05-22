@@ -266,7 +266,7 @@ with st.sidebar:
 
     elif data_source == "Use Sample Data 🧪":
         try:
-            input_df = pd.read_csv("data/sample_data.csv", usecols=["timestamp", "anglez", "enmo"])
+            input_df = pd.read_csv(r""C:\Users\varshini\Downloads\New folder (2)\New folder (2)\data\sample_data.csv"", usecols=["timestamp", "anglez", "enmo"])
             st.sidebar.info("✅ Using sample data.")
             st.sidebar.dataframe(input_df.head())
         except FileNotFoundError:
