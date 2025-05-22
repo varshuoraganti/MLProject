@@ -278,7 +278,7 @@ with st.sidebar:
         @st.cache_data
         def load_sample_data():
             try:
-                return pd.read_csv("data/sample_data.csv", usecols=["timestamp", "anglez", "enmo"])
+                return pd.read_csv(r"C:\Users\varshini\Downloads\New folder (2)\New folder (2)\data\sample_data.csv", usecols=["timestamp", "anglez", "enmo"])
             except Exception as e:
                 st.sidebar.error(f"Error loading sample data: {e}")
                 return None
