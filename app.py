@@ -9,9 +9,9 @@ from joblib import load
 import datetime
 
 # --- Page Configuration ---
-st.set_page_config(page_title="😴 Sleep Pattern Analyzer", page_icon="😴", layout="wide")
+st.set_page_config(page_title="😴 Sleep Pattern Insights", page_icon="😴", layout="wide")
 
-# --- Load Models (Alternative Approach: Dictionary for flexibility) ---
+# --- Load Models ---
 @st.cache_resource
 def load_prediction_models():
     model_paths = {
@@ -22,32 +22,30 @@ def load_prediction_models():
     for name, path in model_paths.items():
         try:
             loaded_models[name] = load(path)
-            st.success(f"✅ Loaded {name}")
+            st.sidebar.success(f"✅ Loaded {name}")
         except FileNotFoundError:
-            st.error(f"⚠️ Model file not found: {path}")
+            st.sidebar.error(f"⚠️ Model file not found: {path}")
         except Exception as e:
-            st.error(f"🔥 Error loading {name}: {e}")
+            st.sidebar.error(f"🔥 Error loading {name}: {e}")
     return loaded_models
 
-# --- Feature Engineering (Alternative: Using DBSCAN for anomaly detection as a feature) ---
+# --- Feature Engineering ---
 def create_features(df):
     df_processed = df.copy()
     if 'series_id' not in df_processed.columns:
-        df_processed['series_id'] = 0  # For single input
+        df_processed['series_id'] = 0
 
-    # Simple rolling statistics
-    df_processed['anglez_roll_mean_15'] = df_processed.groupby('series_id')['anglez'].rolling(window=15, min_periods=1).mean().reset_index(level=0, drop=True)
-    df_processed['enmo_roll_std_15'] = df_processed.groupby('series_id')['enmo'].rolling(window=15, min_periods=1).std().reset_index(level=0, drop=True).fillna(0)
+    df_processed['anglez_smooth'] = df_processed['anglez'].rolling(window=10, min_periods=1).mean().fillna(df_processed['anglez'])
+    df_processed['enmo_derivative'] = df_processed['enmo'].diff().fillna(0)
 
-    # DBSCAN for anomaly detection (potential indicator of unusual movement)
     scaler = StandardScaler()
-    scaled_features = scaler.fit_transform(df_processed[['anglez', 'enmo']].fillna(0))
+    scaled_features = scaler.fit_transform(df_processed[['anglez_smooth', 'enmo_derivative']].fillna(0))
     dbscan = DBSCAN(eps=0.3, min_samples=5)
-    df_processed['is_anomaly'] = dbscan.fit_predict(scaled_features)
+    df_processed['motion_cluster'] = dbscan.fit_predict(scaled_features)
 
-    return df_processed[['anglez', 'enmo', 'anglez_roll_mean_15', 'enmo_roll_std_15', 'is_anomaly']].fillna(0)
+    return df_processed[['anglez_smooth', 'enmo_derivative', 'motion_cluster']].fillna(0)
 
-# --- Prediction Function (More Explicit Handling) ---
+# --- Prediction Function ---
 def make_sleep_predictions(model, features):
     if model:
         try:
@@ -57,92 +55,96 @@ def make_sleep_predictions(model, features):
             st.error(f"🚨 Prediction error: {e}")
             return None
     else:
-        st.warning("⚠️ No model selected or loaded.")
+        st.sidebar.warning("⚠️ No model selected or loaded.")
         return None
 
-# --- Visualization Function (Using Plotly for Interactive Plots) ---
+# --- Visualization Function ---
 def visualize_predictions(df, predictions):
     if predictions is not None:
         plot_df = df.copy()
         plot_df['sleep_state'] = predictions
         fig = px.scatter(plot_df, x=plot_df.index, y='anglez', color='sleep_state',
-                         color_continuous_scale=[(0, 'blue'), (1, 'orange')],
-                         labels={'anglez': 'Angle Z', 'index': 'Time Step', 'sleep_state': 'Predicted Sleep'})
-        fig.update_layout(title='Predicted Sleep States Over Time (vs. Angle Z)')
+                         color_continuous_scale=[(0, 'lightblue'), (1, 'darkblue')],
+                         labels={'anglez': 'Angle Z', 'index': 'Chronological Order', 'sleep_state': 'Sleep Indicator'})
+        fig.update_layout(title='Sleep/Awake Timeline (vs. Smoothed Angle Z)')
         st.plotly_chart(fig, use_container_width=True)
 
-        sleep_percentage = np.mean(predictions) * 100
-        st.metric("Estimated Sleep Percentage", f"{sleep_percentage:.2f}%")
+        sleep_proportion = np.mean(predictions)
+        st.metric("Estimated Sleep Ratio", f"{sleep_proportion:.2f}")
     else:
         st.warning("No predictions to visualize.")
 
-# --- Main Application ---
-st.title("😴 Dynamic Sleep Stage Classifier")
-st.markdown("Analyze your movement data to predict sleep patterns.")
+# --- Sidebar for Data Input ---
+st.sidebar.header("Data Acquisition")
+acquisition_method = st.sidebar.radio(
+    "Select your data input:",
+    ["Browse File System", "Manual Data Entry", "Example Dataset"]
+)
 
-loaded_models = load_prediction_models()
-model_options = list(loaded_models.keys())
-selected_model_name = st.sidebar.selectbox("Choose Prediction Model", model_options)
-selected_model = loaded_models.get(selected_model_name)
+input_df = None
 
-st.subheader("Input Your Data")
-data_source = st.radio("Select data input method:", ["Upload CSV", "Manual Entry", "Sample"])
-
-if data_source == "Upload CSV":
-    uploaded_file = st.file_uploader("Upload a CSV file with 'timestamp', 'anglez', and 'enmo' columns", type=["csv"])
+if acquisition_method == "Browse File System":
+    uploaded_file = st.sidebar.file_uploader("Load your CSV (with 'timestamp', 'anglez', 'enmo')", type=["csv"])
     if uploaded_file:
         try:
             input_df = pd.read_csv(uploaded_file)
             if not all(col in input_df.columns for col in ['timestamp', 'anglez', 'enmo']):
-                st.error("CSV must contain 'timestamp', 'anglez', and 'enmo' columns.")
+                st.sidebar.error("CSV must contain 'timestamp', 'anglez', and 'enmo' columns.")
+                input_df = None
             else:
-                st.dataframe(input_df.head())
-                if st.button("Analyze Uploaded Data"):
-                    processed_features = create_features(input_df.copy())
-                    predictions = make_sleep_predictions(selected_model, processed_features)
-                    if predictions is not None:
-                        visualize_predictions(input_df, predictions)
-                        st.subheader("Prediction Output")
-                        st.write(pd.DataFrame({'Predicted Sleep State': predictions}))
+                st.sidebar.success("Data loaded successfully!")
         except Exception as e:
-            st.error(f"Error loading or processing CSV: {e}")
+            st.sidebar.error(f"Error reading file: {e}")
+            input_df = None
 
-elif data_source == "Manual Entry":
-    st.info("Enter a few data points for a quick analysis.")
-    data_points = []
-    with st.form("manual_data_form"):
-        anglez_input = st.number_input("Angle Z", value=0.0)
-        enmo_input = st.number_input("ENMO", value=0.0)
-        submitted = st.form_submit_button("Add Data Point")
-        if submitted:
-            data_points.append({'anglez': anglez_input, 'enmo': enmo_input})
+elif acquisition_method == "Manual Data Entry":
+    st.sidebar.info("Provide a few data points.")
+    manual_data = []
+    with st.sidebar.form("manual_entry_form"):
+        anglez_val = st.number_input("Angle Z Value", value=0.0)
+        enmo_val = st.number_input("ENMO Value", value=0.0)
+        add_point = st.form_submit_button("Add Data Point")
+        if add_point:
+            manual_data.append({'anglez': anglez_val, 'enmo': enmo_val})
 
-    if data_points:
-        manual_df = pd.DataFrame(data_points)
-        st.dataframe(manual_df)
-        if st.button("Analyze Manual Data"):
-            processed_features = create_features(manual_df.copy())
-            predictions = make_sleep_predictions(selected_model, processed_features)
-            if predictions is not None:
-                visualize_predictions(manual_df, predictions)
-                st.subheader("Prediction Output")
-                st.write(pd.DataFrame({'Predicted Sleep State': predictions}))
+    if manual_data:
+        input_df = pd.DataFrame(manual_data)
+        st.sidebar.dataframe(input_df)
+        if not input_df.empty:
+            st.sidebar.info("Click 'Analyze' to see predictions.")
 
-elif data_source == "Sample":
-    sample_data = pd.DataFrame({
-        'timestamp': pd.to_datetime(['2023-01-01 00:00:00', '2023-01-01 00:00:30', '2023-01-01 00:01:00', '2023-01-01 00:01:30', '2023-01-01 00:02:00']),
-        'anglez': [10, 12, -30, -40, -35],
-        'enmo': [0.1, 0.05, 0.8, 0.9, 0.7]
+elif acquisition_method == "Example Dataset":
+    example_data = pd.DataFrame({
+        'timestamp': pd.to_datetime(['2024-01-01 00:00:00', '2024-01-01 00:00:30', '2024-01-01 00:01:00', '2024-01-01 00:01:30', '2024-01-01 00:02:00']),
+        'anglez': [5, 7, -25, -35, -30],
+        'enmo': [0.05, 0.02, 0.7, 0.8, 0.6]
     })
-    st.dataframe(sample_data)
-    if st.button("Analyze Sample Data"):
-        processed_features = create_features(sample_data.copy())
-        predictions = make_sleep_predictions(selected_model, processed_features)
-        if predictions is not None:
-            visualize_predictions(sample_data, predictions)
-            st.subheader("Prediction Output")
-            st.write(pd.DataFrame({'Predicted Sleep State': predictions}))
+    input_df = example_data
+    st.sidebar.info("Using sample data. Click 'Analyze' to proceed.")
+    st.sidebar.dataframe(input_df)
 
-st.sidebar.header("About")
-st.sidebar.info("This application analyzes accelerometer data to predict sleep patterns. "
-                "It uses machine learning models to classify periods as sleep or awake.")
+# --- Main Application Area ---
+st.title("😴 Sleep Pattern Insights")
+st.markdown("Explore your movement data to understand sleep states.")
+
+loaded_models = load_prediction_models()
+model_options = list(loaded_models.keys())
+selected_model_name = st.sidebar.selectbox("Select Prediction Engine", model_options)
+selected_model = loaded_models.get(selected_model_name)
+
+st.subheader("Data Preview")
+if input_df is not None:
+    st.dataframe(input_df.head())
+
+    if st.button("Initiate Analysis"):
+        processed_features = create_features(input_df.copy())
+        predictions = make_sleep_predictions(selected_model, processed_features)
+        visualize_predictions(input_df, predictions)
+        st.subheader("Prediction Outcome")
+        if predictions is not None:
+            st.write(pd.DataFrame({'Predicted Sleep State': predictions}))
+else:
+    st.info("Please load or enter your data in the sidebar to begin analysis.")
+
+st.sidebar.header("About This App")
+st.sidebar.info("This application processes accelerometer data (Angle Z and ENMO) to predict periods of sleep and wakefulness. Choose your data input method and a prediction model in the sidebar.")
