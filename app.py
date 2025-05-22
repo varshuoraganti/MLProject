@@ -341,11 +341,4 @@ if input_df is not None and models_loaded and selected_model:
                         )
 
                     else:
-                        st.error("⚠️ Prediction failed. Please check your input data and model.")
-
-                except Exception as e:
-                    st.error(f"❌ An error occurred during prediction: {e}")
-
-    elif input_df is None:
-        st.info("👆 Please upload your data or enter values in the sidebar to begin.")
-    elif data_source == "Enter Values Manually ✍":
+                        st.error("⚠️ Prediction")
