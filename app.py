@@ -34,18 +34,17 @@ def load_models():
             model = load(file_path)
             models[model_name] = model
             loaded_models.append(model_name)
-            st.success(f"✓ Successfully loaded {model_name} model")
+            st.sidebar.success(f"✓ Loaded {model_name} model")
         except Exception as e:
             errors.append(f"Error loading {model_name}: {str(e)}")
+            st.sidebar.error(f"Error loading {model_name}: {str(e)}")
 
     if not models:
-        st.error("⚠️ Could not load any models. Using fallback models instead.")
+        st.sidebar.error("⚠️ Could not load any models. Using fallback models instead.")
         return create_fallback_models()
     else:
         if errors:
-            st.warning(f"⚠️ Some models could not be loaded. Only using: {', '.join(loaded_models)}")
-            for err in errors:
-                st.error(err)
+            st.sidebar.warning(f"⚠️ Some models could not be loaded. Only using: {', '.join(loaded_models)}")
         return models
 
 # Fallback model implementation
@@ -130,7 +129,7 @@ def calculate_rolling_features(df):
             .rolling(2).mean().reset_index(level=0, drop=True)
         )
     except Exception as e:
-        st.warning(f"Error calculating rolling statistics: {e}")
+        st.sidebar.warning(f"Error calculating rolling statistics: {e}")
 
     # Fill remaining NaN values
     data['sd_enmo_1'].fillna(0.0, inplace=True)
@@ -154,7 +153,7 @@ def perform_clustering(df):
         # Convert to 0.25, 0.5, 0.75, 1.0 format as in the notebook
         return (labels + 1) / 4
     except Exception as e:
-        st.warning(f"Error in clustering: {e}")
+        st.sidebar.warning(f"Error in clustering: {e}")
         # Return a default value if clustering fails
         return np.ones(len(df)) * 0.5
 
@@ -168,11 +167,11 @@ def process_input_data(df):
         try:
             data['timestamp'] = pd.to_datetime(data['timestamp'])
         except Exception as e:
-            st.warning(f"Could not convert 'timestamp' column to datetime: {e}")
+            st.sidebar.warning(f"Could not convert 'timestamp' column to datetime: {e}")
             # Fallback to using index for plotting if conversion fails
             pass
     else:
-        st.warning("Timestamp column not found. Using index for time-based plots.")
+        st.sidebar.warning("Timestamp column not found. Using index for time-based plots.")
 
     # Remove inactive periods (where both enmo and anglez don't change)
     data['diff_anglez'] = data['anglez'].diff()
@@ -201,14 +200,18 @@ def predict_sleep_state(model, X):
         if hasattr(model, 'predict'):
             # The key fix: Make a copy of the data to prevent modification issues
             X_copy = X.copy()
+
+            # Check the shape of input data
+            st.sidebar.write(f"Input data shape for prediction: {X_copy.shape}")
+
             # Ensure the model is making binary predictions (0 or 1)
             predictions = model.predict(X_copy).astype(int)
             return predictions
         else:
-            st.warning("Model doesn't have predict method")
+            st.sidebar.warning("Model doesn't have predict method")
             return np.zeros(X.shape[0])
     except Exception as e:
-        st.warning(f"Prediction error: {e}. Using fallback prediction logic.")
+        st.sidebar.warning(f"Prediction error: {e}. Using fallback prediction logic.")
 
         # For simple fallback models
         if hasattr(model, 'strategy'):
@@ -221,139 +224,137 @@ def predict_sleep_state(model, X):
 st.title("💤 Sleep State Prediction App")
 st.markdown("""
 This app predicts sleep states using accelerometer data from wearable devices.
-Select a model from the dropdown and either upload your data or use the provided sample data.
+Configure your data and model in the sidebar.
 """)
 
-# Load models
-models = load_models()
-models_loaded = models is not None and len(models) > 0
-
-# Model selection dropdown
-if models_loaded:
-    st.sidebar.header("Model Selection")
-    selected_model = st.sidebar.selectbox(
-        "Choose a model for prediction",
-        list(models.keys()),
-        index=1  # Default to Tuned XGBoost
+# Sidebar for data input and model selection
+with st.sidebar:
+    st.header("Data Input")
+    input_method = st.radio(
+        "Choose input method:",
+        ["Upload CSV file", "Enter values manually", "Use sample data"]
     )
 
-    # Model info
-    st.sidebar.subheader("Model Information")
-    model_description = {
-        "XGBoost": "Standard XGBoost model with good performance.",
-        "Tuned XGBoost": "XGBoost with optimized hyperparameters for best accuracy.",
-        "XGBoost (Fallback)": "Fallback model simulating XGBoost predictions.",
-        "Tuned XGBoost (Fallback)": "Fallback model simulating tuned XGBoost predictions."
-    }
-    st.sidebar.info(model_description.get(selected_model, "Model information not available"))
+    input_df = None
+    if input_method == "Upload CSV file":
+        uploaded_file = st.file_uploader("Upload a CSV file with columns 'timestamp', 'anglez', and 'enmo'", type=["csv"])
+        if uploaded_file is not None:
+            try:
+                input_df = pd.read_csv(uploaded_file)
+                if not all(col in input_df.columns for col in ['timestamp', 'anglez', 'enmo']):
+                    st.sidebar.error("CSV must contain columns 'timestamp', 'anglez', and 'enmo'")
+                    input_df = None
+                else:
+                    st.sidebar.success("File uploaded successfully!")
+                    st.sidebar.dataframe(input_df.head())
+            except Exception as e:
+                st.sidebar.error(f"Error reading file: {e}")
+                input_df = None
 
-    # Feature importance
-    st.sidebar.subheader("Key Features")
-    st.sidebar.write("- sd_anglez_1: Standard deviation of arm angle (1 min window)")
-    st.sidebar.write("- sd_enmo_1: Standard deviation of movement (1 min window)")
-    st.sidebar.write("- m_anglez_2: Mean arm angle (2 min window)")
-    st.sidebar.write("- m_enmo_2: Mean movement (2 min window)")
-    st.sidebar.write("- cluster: Movement pattern cluster (0.25-1.0)")
+    elif input_method == "Enter values manually":
+        st.sidebar.subheader("Enter Accelerometer Data")
+        st.sidebar.write("Enter at least a few data points with timestamps for prediction")
+
+        manual_data = []
+        with st.sidebar.form("data_form"):
+            col1, col2, col3 = st.columns(3)
+            date_input = col1.date_input("Date", datetime.datetime.now().date())
+            time_input = col1.time_input("Time", datetime.datetime.now().time())
+            anglez = col2.number_input("Angle Z (degrees)", value=0.0, step=1.0)
+            enmo = col3.number_input("ENMO (movement)", value=0.0, min_value=0.0, step=0.01)
+            add_point = st.form_submit_button(label="Add Data Point")
+
+        if add_point:
+            timestamp = datetime.datetime.combine(date_input, time_input)
+            manual_data.append({'timestamp': timestamp, 'anglez': anglez, 'enmo': enmo})
+
+        if manual_data:
+            input_df = pd.DataFrame(manual_data)
+            st.sidebar.dataframe(input_df)
+            if len(input_df) < 3:
+                st.sidebar.warning("Please add at least 3 data points for prediction.")
+
+    elif input_method == "Use sample data":
+        @st.cache_data
+        def load_sample_data():
+            try:
+                return pd.read_csv("data/sample_data.csv", usecols=["timestamp", "anglez", "enmo"])
+            except Exception as e:
+                st.sidebar.error(f"Error loading sample data: {e}")
+                return None
+
+        input_df = load_sample_data()
+        if input_df is not None:
+            st.sidebar.info("Using sample data.")
+            st.sidebar.dataframe(input_df.head())
+
+    st.header("Model Selection")
+    models = load_models()
+    models_loaded = models is not None and len(models) > 0
+    if models_loaded:
+        selected_model = st.selectbox(
+            "Choose a model for prediction",
+            list(models.keys()),
+            index=1  # Default to Tuned XGBoost
+        )
+    else:
+        selected_model = None
+
+# Main area for predictions
+st.header("Prediction Results")
+
+if input_df is not None and models_loaded and selected_model:
+    if (input_method == "Enter values manually" and len(st.session_state.manual_data) >= 3) or (input_method != "Enter values manually" and not input_df.empty):
+        if st.button("Make Prediction"):
+            with st.spinner("Processing data and making predictions..."):
+                X_scaled, processed_df = process_input_data(input_df.copy())
+                predictions = predict_sleep_state(models[selected_model], X_scaled)
+
+                if predictions is not None:
+                    processed_df['sleep_prediction'] = predictions
+
+                    st.subheader("Predictions")
+                    st.dataframe(processed_df[['timestamp', 'anglez', 'enmo', 'sleep_prediction']])
+
+                    # Calculate sleep percentage
+                    sleep_percentage = (predictions == 1).mean() * 100
+                    awake_percentage = 100 - sleep_percentage
+                    st.metric("Sleep Percentage", f"{sleep_percentage:.1f}%")
+                    st.metric("Awake Percentage", f"{awake_percentage:.1f}%")
+
+                    # Plot predictions over time
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=processed_df['timestamp'] if 'timestamp' in processed_df.columns else processed_df.index,
+                        y=processed_df['sleep_prediction'],
+                        mode='lines',
+                        name='Sleep State (1=Sleep, 0=Awake)'
+                    ))
+                    fig.update_layout(
+                        title="Sleep Predictions Over Time",
+                        xaxis_title="Time",
+                        yaxis_title="Sleep State",
+                        yaxis=dict(tickvals=[0, 1], ticktext=["Awake", "Sleep"])
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Option to download results
+                    csv = processed_df.to_csv(index=False)
+                    st.download_button(
+                        label="Download predictions as CSV",
+                        data=csv,
+                        file_name="sleep_predictions.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.error("Prediction failed.")
+    elif input_method == "Enter values manually" and (not hasattr(st.session_state, 'manual_data') or len(st.session_state.manual_data) < 3):
+        st.warning("Please enter at least 3 data points for manual prediction.")
+    elif input_df is None and input_method == "Use sample data":
+        st.info("Loading sample data...")
+    else:
+        st.info("Please upload your data or enter values manually in the sidebar to see predictions.")
+elif not models_loaded:
+    st.error("Models could not be loaded. Please ensure the model files are in the correct directory.")
 else:
-    st.error("No models could be loaded. Please check that the model files exist.")
-
-# Data input section
-st.header("Input Data")
-
-input_method = st.radio(
-    "Choose input method:",
-    ["Upload CSV file", "Enter values manually", "Use sample data"]
-)
-
-if input_method == "Upload CSV file":
-    uploaded_file = st.file_uploader("Upload a CSV file with columns 'timestamp', 'anglez', and 'enmo'", type=["csv"])
-    if uploaded_file is not None:
-        try:
-            input_df = pd.read_csv(uploaded_file)
-            if not all(col in input_df.columns for col in ['timestamp', 'anglez', 'enmo']):
-                st.error("CSV must contain columns 'timestamp', 'anglez', and 'enmo'")
-            else:
-                st.success("File uploaded successfully!")
-                st.dataframe(input_df.head())
-
-                # Process data for prediction
-                if st.button("Make Prediction"):
-                    with st.spinner("Processing data and making predictions..."):
-                        X_scaled, processed_df = process_input_data(input_df.copy()) # Use .copy() to avoid potential issues
-                        predictions = predict_sleep_state(models[selected_model], X_scaled)
-
-                        if predictions is not None:
-                            processed_df['sleep_prediction'] = predictions
-
-                            # Display results
-                            st.header("Prediction Results")
-                            st.write(f"Model used: {selected_model}")
-
-                            # Calculate sleep percentage
-                            sleep_percentage = (predictions == 1).mean() * 100
-                            awake_percentage = 100 - sleep_percentage
-
-                            col1, col2 = st.columns(2)
-
-                            # Display metrics
-                            col1.metric("Sleep Percentage", f"{sleep_percentage:.1f}%")
-                            col2.metric("Awake Percentage", f"{awake_percentage:.1f}%")
-
-                            # Plot predictions over time
-                            fig = go.Figure()
-                            fig.add_trace(go.Scatter(
-                                x=processed_df['timestamp'] if 'timestamp' in processed_df.columns else processed_df.index,
-                                y=processed_df['sleep_prediction'],
-                                mode='lines',
-                                name='Sleep State (1=Sleep, 0=Awake)'
-                            ))
-                            fig.update_layout(
-                                title="Sleep Predictions Over Time",
-                                xaxis_title="Time",
-                                yaxis_title="Sleep State",
-                                yaxis=dict(tickvals=[0, 1], ticktext=["Awake", "Sleep"])
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-
-                            # Show data table with predictions
-                            st.subheader("Processed Data with Predictions")
-                            st.dataframe(processed_df)
-
-                            # Option to download results
-                            csv = processed_df.to_csv(index=False)
-                            st.download_button(
-                                label="Download predictions as CSV",
-                                data=csv,
-                                file_name="sleep_predictions.csv",
-                                mime="text/csv",
-                            )
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-
-elif input_method == "Enter values manually":
-    st.subheader("Enter Accelerometer Data")
-    st.write("Enter at least a few data points with timestamps for prediction")
-
-    # Create empty dataframe
-    if 'manual_data' not in st.session_state:
-        st.session_state.manual_data = pd.DataFrame(columns=['timestamp', 'anglez', 'enmo'])
-
-    # Form for entering new data points
-    with st.form("data_form"):
-        col1, col2, col3 = st.columns(3)
-        date_input = col1.date_input("Date", datetime.datetime.now().date())
-        time_input = col1.time_input("Time", datetime.datetime.now().time())
-        anglez = col2.number_input("Angle Z (degrees)", value=0.0, step=1.0)
-        enmo = col3.number_input("ENMO (movement)", value=0.0, min_value=0.0, step=0.01)
-
-        # Add the form submit button
-        submit_button = st.form_submit_button(label="Add Data Point")
-
-    # Process form submission (outside the form)
-    if submit_button:
-        # Create timestamp by combining date and time
-        timestamp = datetime.datetime.combine(date_input, time_input)
-        new_data = pd.DataFrame({
-            'timestamp': [timestamp],
-            'anglez': [anglez],
-            'enmo': [enmo]})
+    st.info("Please input your data and select a model in the sidebar to see predictions.")
