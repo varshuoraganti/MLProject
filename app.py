@@ -356,4 +356,4 @@ elif input_method == "Enter values manually":
         new_data = pd.DataFrame({
             'timestamp': [timestamp],
             'anglez': [anglez],
-            'enmo': [enmo]
+            'enmo': [enmo]})
