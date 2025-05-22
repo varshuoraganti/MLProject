@@ -348,4 +348,4 @@ if input_df is not None and models_loaded and selected_model:
 
     elif input_df is None:
         st.info("👆 Please upload your data or enter values in the sidebar to begin.")
-    elif data_source == "Enter Values Manually ✍"
+    elif data_source == "Enter Values Manually ✍":
