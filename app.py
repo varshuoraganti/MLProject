@@ -377,7 +377,6 @@ elif input_method == "Enter values manually":
             else:
                 with st.spinner("Processing data and making predictions..."):
                     input_df = st.session_state.manual_data.copy()
-                    X_scaled, processed_df = process_input_data(input_df)  # Process the manual data
-                    predictions = predict_sleep_state(models[selected_model], X_scaled)
-
-                    
+                    # Calculate the missing features for manual input
+                    processed_df_manual = calculate_rolling_features(input_df.copy())
+                    processed_df_manual['cluster'] = perform_clustering(input_df.copy())
