@@ -336,4 +336,8 @@ if input_df is not None and models_loaded and selected_model:
                         st.download_button(
                             label="💾 Download Predictions as CSV",
                             data=csv,
-                            file_name="sleep_")
+                            file_name="sleep_predictions.csv",
+                            mime="text/csv",
+                        )
+                except Exception as e:
+                    st.error(f"❌ An error occurred during prediction or result display: {e}")        
