@@ -258,7 +258,7 @@ if input_method == "Upload CSV file":
     uploaded_file = st.file_uploader("Upload a CSV file with columns 'timestamp', 'anglez', and 'enmo'", type=["csv"])
     if uploaded_file is not None:
         try:
-            input_df = pd.read_csv(uploaded_file)
+            input_df = pd.read_csv(r"C:\Users\varshini\Downloads\New folder (2)\New folder (2)\data\final_series_df.csv")
             if not all(col in input_df.columns for col in ['timestamp', 'anglez', 'enmo']):
                 st.error("CSV must contain columns 'timestamp', 'anglez', and 'enmo'")
             else:
