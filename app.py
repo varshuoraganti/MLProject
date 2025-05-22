@@ -31,7 +31,7 @@ def load_models():
 
     for model_name, file_path in model_files.items():
         try:
-            model = load(r"C:\Users\varshini\Downloads\New folder (2)\New folder (2)\data\final_series_df.csv")
+            model = load(file_path)
             models[model_name] = model
             loaded_models.append(model_name)
             st.success(f"✓ Successfully loaded {model_name} model")
@@ -97,7 +97,7 @@ def calculate_rolling_features(df):
     data['sd_enmo_1'] = np.nan    # 1 min rolling std: enmo
     data['sd_anglez_1'] = np.nan  # 1 min rolling std: anglez
     data['m_enmo_2'] = np.nan     # 2 min rolling mean: enmo
-    data['m_anglez_2'] = np.nan   # 2 min rolling std: anglez
+    data['m_anglez_2'] = np.nan   # 2 min rolling mean: anglez #Changed to mean
 
     # Calculate rolling statistics with handling of edge cases
     try:
@@ -124,7 +124,7 @@ def calculate_rolling_features(df):
         )
 
         data['m_anglez_2'] = (data.groupby('series_id')['anglez']
-                        .rolling(24).mean().reset_index(level=0, drop=True))
+                        .rolling(24).mean().reset_index(level=0, drop=True)) #changed to mean
         data.loc[data['m_anglez_2'].isna(), 'm_anglez_2'] = (
             data.groupby('series_id')['anglez']
             .rolling(2).mean().reset_index(level=0, drop=True)
@@ -357,26 +357,3 @@ elif input_method == "Enter values manually":
             'timestamp': [timestamp],
             'anglez': [anglez],
             'enmo': [enmo]
-        })
-        st.session_state.manual_data = pd.concat([st.session_state.manual_data, new_data], ignore_index=True)
-        st.success("Data point added!")
-
-    # Display and manage current data
-    if not st.session_state.manual_data.empty:
-        st.subheader("Current Data")
-        st.dataframe(st.session_state.manual_data)
-
-        col1, col2 = st.columns(2)
-        if col1.button("Clear All Data"):
-            st.session_state.manual_data = pd.DataFrame(columns=['timestamp', 'anglez', 'enmo'])
-            st.success("Data cleared!")
-
-        if models_loaded and col2.button("Make Prediction"):
-            if len(st.session_state.manual_data) < 3:
-                st.warning("Please add at least 3 data points for prediction")
-            else:
-                with st.spinner("Processing data and making predictions..."):
-                    input_df = st.session_state.manual_data.copy()
-                    # Calculate the missing features for manual input
-                    processed_df_manual = calculate_rolling_features(input_df.copy())
-                    processed_df_manual['cluster'] = perform_clustering(input_df.copy())
