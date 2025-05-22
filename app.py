@@ -31,7 +31,7 @@ def load_models():
 
     for model_name, file_path in model_files.items():
         try:
-            model = load(file_path)
+            model = load(r"C:\Users\varshini\Downloads\New folder (2)\New folder (2)\data\final_series_df.csv")
             models[model_name] = model
             loaded_models.append(model_name)
             st.success(f"✓ Successfully loaded {model_name} model")
