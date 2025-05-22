@@ -369,4 +369,4 @@ elif input_method == "Enter values manually":
                     X_scaled, processed_df = process_input_data(input_df)
                     predictions = predict_sleep_state(models[selected_model], X_scaled)
                     
-                    if predictions is not None
+                    if predictions is not None:
